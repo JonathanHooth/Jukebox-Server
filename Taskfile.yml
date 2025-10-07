@@ -89,6 +89,11 @@ tasks:
     cmds:
       - docker-compose down --remove-orphans -v
 
+  clean:network:
+    desc: 'Stop containers and remove volumes'
+    cmds:
+      - docker-compose -f docker-compose.network.yml down --remove-orphans -v
+
   #########################################
   # Jukebox-Types Package
   #########################################
