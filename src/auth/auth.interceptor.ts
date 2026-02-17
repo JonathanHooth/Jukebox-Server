@@ -25,6 +25,7 @@ export class AuthInterceptor implements NestInterceptor {
     }
 
     const authHeader = request.headers.authorization || ''
+
     const [_, token] = authHeader.split(' ')
 
     try {

@@ -51,6 +51,7 @@ export class NetworkService {
   }
 
   async fetchUser(token: string): Promise<UserDto> {
+    console.log(token)
     const res = await this.sendRequest(token, this.routes.getUser)
 
     if (res.status > 299) {

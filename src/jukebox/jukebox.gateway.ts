@@ -148,6 +148,8 @@ export class JukeboxGateway implements OnGatewayInit {
     console.log('Joining ', jukeboxId)
     await client.join(jukeboxId)
     const playerState = await this.playerService.getPlayerState(+jukeboxId)
+
+    //const result = spotify_track ? { ...playerState, spotify_track: { ...spotify_track, duration_ms } }: playerState
     console.log(playerState)
     this.server.to(jukeboxId).emit('player-join-success', playerState)
   }
@@ -172,17 +174,18 @@ export class JukeboxGateway implements OnGatewayInit {
     }
 
     const { jukebox_id, action, progress, spotify_track, duration_ms } = payload
+    console.log(spotify_track)
     const session = await this.jukeSessionService.maybeGetCurrentSession(jukebox_id)
 
     switch (action) {
       case 'played':
-        this.playerService.setIsPlaying(jukebox_id, true)
+        await this.playerService.setIsPlaying(jukebox_id, true)
         break
       case 'paused':
-        this.playerService.setIsPlaying(jukebox_id, false)
+        await this.playerService.setIsPlaying(jukebox_id, false)
         break
       case 'progress':
-        this.playerService.setCurrentProgress(jukebox_id, progress ?? 0)
+        await this.playerService.setCurrentProgress(jukebox_id, progress ?? 0)
         break
       case 'changed_tracks':
         if (spotify_track && !spotify_track?.spotify_id) {
@@ -204,7 +207,7 @@ export class JukeboxGateway implements OnGatewayInit {
           } catch (err) {
             if (err instanceof NotFoundException) {
               nextTrack = null
-            } else throw new err()
+            } else throw err
           }
 
           if (nextTrack && nextTrack.track.spotify_id === spotify_track?.spotify_id) {
@@ -225,11 +228,16 @@ export class JukeboxGateway implements OnGatewayInit {
     }
 
     if (progress != null) {
-      this.playerService.setCurrentProgress(jukebox_id, progress, payload.timestamp)
+      await this.playerService.setCurrentProgress(jukebox_id, progress, payload.timestamp)
     }
 
     const playerState = await this.playerService.getPlayerState(jukebox_id)
-    this.server.to(jukebox_id.toString()).emit('player-state-update', playerState)
+    //this.server.to(jukebox_id.toString()).emit('player-state-update', playerState)
+    const result = spotify_track
+      ? { ...playerState, spotify_track: { ...spotify_track } }
+      : playerState
+    console.log(result)
+    this.server.to(jukebox_id.toString()).emit('player-state-update', result)
   }
 
   private handleConnectionRejection(client: Socket, loggingMessage: string, errorMessage: string) {
