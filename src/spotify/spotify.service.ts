@@ -67,12 +67,25 @@ export class SpotifyService extends SpotifyBaseService implements ISpotifyServic
     limit: MaxInt<50> = 10,
   ) {
     const sdk = this.getSdk(spotifyAuth)
-    return sdk.search(
+    const res = await sdk.search(
       `${searchQuery.trackQuery} artist:${searchQuery.artistQuery} album:${searchQuery.albumQuery}`,
       ['track'],
       undefined,
       limit,
     )
+    const items = res?.tracks?.items
+
+    if (Array.isArray(items)) {
+      for (const track of items) {
+        const images = track?.album?.images
+
+        if (Array.isArray(images) && images.length > 0) {
+          console.log(images[0])
+        }
+      }
+    }
+
+    return res
   }
 
   async startPlayback(spotifyAuth: SpotifyTokensDto, deviceId: string) {

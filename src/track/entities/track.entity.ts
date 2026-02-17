@@ -23,4 +23,13 @@ export class Track extends EntityBase {
 
   @Column()
   duration_ms: number
+
+  @Column({ nullable: true, type: 'boolean' })
+  is_explicit: boolean
+
+  @Column({ nullable: true, type: 'varchar' })
+  preview_url: string | null
+
+  @Column({ nullable: true, type: 'varchar' })
+  image_url: string | null
 }

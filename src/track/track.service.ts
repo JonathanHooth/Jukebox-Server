@@ -83,6 +83,7 @@ export class TrackService {
       )
       console.log('track details:', trackDetails)
       const releaseYear = new Date(trackDetails.album.release_date).getFullYear()
+      const imageUrl = trackDetails.album.images?.[0]?.url ?? null
       track = await this.create({
         release_year: releaseYear,
         spotify_id: spotifyId,
@@ -93,6 +94,7 @@ export class TrackService {
         duration_ms: trackDetails.duration_ms,
         is_explicit: trackDetails.explicit,
         preview_url: trackDetails.preview_url,
+        image_url: imageUrl,
       })
     }
     console.log('track:', track)

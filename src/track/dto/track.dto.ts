@@ -13,6 +13,7 @@ export class TrackDto extends EntityDtoBase<Track> {
   duration_ms: number
   is_explicit: boolean
   preview_url: string | null
+  image_url: string | null
 }
 
 export class CreateTrackDto {
@@ -42,5 +43,8 @@ export class CreateTrackDto {
 
   @Expose()
   preview_url: string | null
+
+  @Expose()
+  image_url: string | null
 }
 export class UpdateTrackDto extends PartialType(CreateTrackDto) {}
