@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { plainToInstance } from 'class-transformer'
 import { AccountLinkService } from 'src/jukebox/account-link/account-link.service'
-import { JukeboxSearchDto } from 'src/jukebox/dto/jukebox-search.dto'
+import { JukeboxSearchDto, TrackSearchPageDto } from 'src/jukebox/dto/jukebox-search.dto'
 import { SpotifyService } from 'src/spotify/spotify.service'
 import { Repository } from 'typeorm'
 import { CreateTrackDto, TrackDto } from './dto/track.dto'
 import { Track } from './entities/track.entity'
+import { MaxInt } from '@spotify/web-api-ts-sdk'
 
 @Injectable()
 export class TrackService {
@@ -37,9 +38,18 @@ export class TrackService {
     return plainToInstance(TrackDto, track)
   }
 
-  async searchTracks(jukeboxId: number, searchQuery: JukeboxSearchDto): Promise<TrackDto> {
+  async searchTracks(
+    jukeboxId: number,
+    searchQuery: JukeboxSearchDto,
+    searchPage: TrackSearchPageDto,
+  ): Promise<TrackDto> {
     const link = await this.accountLinkService.getActiveAccount(jukeboxId)
-    const search = await this.spotifyService.searchTracks(link.spotify_account, searchQuery)
+    const search = await this.spotifyService.searchTracks(
+      link.spotify_account,
+      searchQuery,
+      searchPage.row as MaxInt<50>,
+      searchPage.page,
+    )
     return plainToInstance(TrackDto, search)
   }
 

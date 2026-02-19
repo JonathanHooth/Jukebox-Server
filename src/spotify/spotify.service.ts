@@ -65,13 +65,16 @@ export class SpotifyService extends SpotifyBaseService implements ISpotifyServic
     spotifyAuth: SpotifyTokensDto,
     searchQuery: JukeboxSearchDto,
     limit: MaxInt<50> = 10,
+    page: number = 0,
   ) {
+    const offset = page * limit
     const sdk = this.getSdk(spotifyAuth)
     const res = await sdk.search(
       `${searchQuery.trackQuery} artist:${searchQuery.artistQuery} album:${searchQuery.albumQuery}`,
       ['track'],
       undefined,
       limit,
+      offset,
     )
     const items = res?.tracks?.items
 
