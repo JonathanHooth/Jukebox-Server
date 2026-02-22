@@ -69,6 +69,12 @@ export class TrackService {
   //   return `This action removes a #${id} track`
   // }
 
+  async getCurrentTrack(jukeboxId: number): Promise<TrackDto | undefined> {
+    const accountLink = await this.accountLinkService.getActiveAccount(jukeboxId)
+    const result = await this.spotifyService.getCurrentTrack(accountLink.spotify_account)
+    return result
+  }
+
   /**
    * Get local reference to a track using the track's
    * spotify id. Will create local reference if one

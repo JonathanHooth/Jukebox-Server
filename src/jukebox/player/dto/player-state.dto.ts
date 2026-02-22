@@ -1,4 +1,4 @@
-import { Expose } from 'class-transformer'
+import { Expose, Type } from 'class-transformer'
 import { QueuedTrackDto } from 'src/jukebox/queue/dto'
 import { TrackDto } from 'src/track/dto/track.dto'
 
@@ -10,6 +10,7 @@ export class PlayerStateDto {
   queued_track?: QueuedTrackDto
 
   @Expose()
+  @Type(() => TrackDto)
   spotify_track?: TrackDto
 
   @Expose()

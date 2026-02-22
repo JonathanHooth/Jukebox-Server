@@ -49,13 +49,20 @@ export class PlayerService {
    */
   async getPlayerState(jukeboxId: number): Promise<PlayerStateDto> {
     let cachedState = await this.cache.get<PlayerStateDto>(`jukebox-${jukeboxId}`)
-
+    console.log('cached')
+    console.log(cachedState)
     if (!cachedState) {
+      const accountLink = await this.accountLinkService.getActiveAccount(jukeboxId)
+      const spotify_track = await this.spotifyService.getCurrentTrack(accountLink.spotify_account)
+      console.log('Made caching')
+      console.log(spotify_track)
+
       cachedState = {
         jukebox_id: jukeboxId,
         is_playing: false,
         last_progress_update: new Date(),
         progress: 0,
+        spotify_track: spotify_track,
       }
       await this.setPlayerState(jukeboxId, cachedState)
     }

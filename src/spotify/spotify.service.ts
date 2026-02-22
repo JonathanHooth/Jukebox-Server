@@ -1,9 +1,10 @@
 import { HttpService } from '@nestjs/axios'
 import { Injectable, Logger } from '@nestjs/common'
-import { MaxInt } from '@spotify/web-api-ts-sdk'
+import { MaxInt, Track, TrackItem, Episode } from '@spotify/web-api-ts-sdk'
 import { JukeboxSearchDto } from 'src/jukebox/dto/jukebox-search.dto'
 import { SpotifyTokensDto } from './dto/spotify-tokens.dto'
 import { SpotifyBaseService } from './spotify-base.service'
+import { TrackDto } from 'src/track/dto/track.dto'
 
 export interface ISpotifyService {
   setPlayerDevice(spotifyAuth: SpotifyTokensDto, deviceId: string): Promise<void>
@@ -24,6 +25,32 @@ export class SpotifyService extends SpotifyBaseService implements ISpotifyServic
   async getProfile(spotifyAuth: SpotifyTokensDto) {
     const sdk = this.getSdk(spotifyAuth)
     return await sdk.currentUser.profile()
+  }
+
+  private mapToTrackDto(track: Track): TrackDto {
+    const dto = new TrackDto()
+    dto.name = track.name
+    dto.album = track.album.album_group
+    dto.release_year = new Date(track.album.release_date).getFullYear()
+    dto.artists = track.artists.map((a) => a.name)
+    dto.spotify_id = track.id
+    dto.spotify_uri = track.uri
+    dto.duration_ms = track.duration_ms
+    dto.is_explicit = track.explicit
+    dto.preview_url = track.preview_url
+    dto.image_url = track.album.images?.[0]?.url ?? null
+    return dto
+  }
+
+  async getCurrentTrack(spotifyAuth: SpotifyTokensDto) {
+    const sdk = this.getSdk(spotifyAuth)
+    const currentTrack = await sdk.player.getCurrentlyPlayingTrack()
+
+    //Only allow track items for now. Later accomodate for episodes
+    if (!currentTrack || !currentTrack.item || !('album' in currentTrack.item)) return undefined
+
+    //Map TrackItem to Standardized TrackDto
+    return this.mapToTrackDto(currentTrack.item)
   }
 
   async getTrack(spotifyAuth: SpotifyTokensDto, trackId: string) {

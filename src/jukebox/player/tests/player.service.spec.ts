@@ -122,6 +122,7 @@ describe('PlayerService', () => {
       duration_ms: 0,
       is_explicit: false,
       preview_url: null,
+      image_url: null,
     })
 
     queuedTrack = await createTestQueuedTrack()
