@@ -1,16 +1,16 @@
 import { Type } from 'class-transformer'
-import { IsNotEmpty, IsNumber, IsString, Max, Min } from 'class-validator'
+import { IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 
 export class JukeboxSearchDto {
   @IsNotEmpty()
   @IsString()
   trackQuery: string
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
   albumQuery: string
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
   artistQuery: string
 }

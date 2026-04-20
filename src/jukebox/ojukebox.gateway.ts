@@ -40,7 +40,17 @@ export class JukeboxGateway implements OnGatewayInit {
     private httpService: HttpService,
     private networkService: NetworkService,
   ) {}
+  // afterInit(server: Server) {
+  //   server.use(async (client: Socket, next) => {})
+  // }
+  // handleConnection(socket: Socket, ...args: any[]) {
+  //   console.log('class http:', this.httpService)
+  //   // let http = new HttpService()
+  //   // console.log('new http:', http)
 
+  // }
+
+  // @WebSocketServer() server: Server
   async afterInit(server: Server) {
     server.use(async (client: Socket, next) => {
       try {
@@ -129,11 +139,17 @@ export class JukeboxGateway implements OnGatewayInit {
   }
 
   async handleDisconnect(client: Socket) {
-    if (client['role'] !== 'admin') return
+    if (client['role'] !== 'admin') {
+      return
+    }
 
     const jukeboxId = client.handshake.query?.club_id
-    if (!jukeboxId) return
+    if (!jukeboxId) {
+      return
+    }
 
+    //Set player state to false to sync with spotify stopping the track
+    //Possibly reset the track info as well
     try {
       await this.playerService.setIsPlaying(+jukeboxId, false)
       const playerState = await this.playerService.getPlayerState(+jukeboxId)
@@ -153,13 +169,24 @@ export class JukeboxGateway implements OnGatewayInit {
     }
 
     const jukeboxId = payload.jukebox_id.toString()
+    console.log('Joining ', jukeboxId)
     await client.join(jukeboxId)
 
+    //Should always sync from spotify upon connection
     if (client['role'] === 'admin') {
       await this.playerService.syncFromSpotify(+jukeboxId)
     }
 
     const playerState = await this.playerService.getPlayerState(+jukeboxId)
+
+    const queuedTracks = await this.queueService.getQueue(+jukeboxId)
+
+    //for(const track in queuedTracks){
+    //  await this.spotfi
+    //}
+
+    //const result = spotify_track ? { ...playerState, spotify_track: { ...spotify_track, duration_ms } }: playerState
+    console.log(playerState)
     this.server.to(jukeboxId).emit('player-join-success', playerState)
   }
 
@@ -168,6 +195,7 @@ export class JukeboxGateway implements OnGatewayInit {
     if (client['role'] !== 'admin') {
       throw new WsException('You are not authorized')
     }
+
     console.log('Player Available')
   }
 
@@ -176,93 +204,75 @@ export class JukeboxGateway implements OnGatewayInit {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: PlayerAuxUpdateDto,
   ) {
+    console.log('Received Player Aux Update:', payload)
     if (client['role'] !== 'admin') {
       throw new WsException('You are not authorized')
     }
 
     const { jukebox_id, action, progress, spotify_track, duration_ms } = payload
+    console.log(spotify_track)
     const session = await this.jukeSessionService.maybeGetCurrentSession(jukebox_id)
 
     switch (action) {
       case 'played':
         await this.playerService.setIsPlaying(jukebox_id, true)
         break
-
       case 'paused':
         await this.playerService.setIsPlaying(jukebox_id, false)
         break
-
       case 'progress':
-        // Pass duration_ms and session id so PlayerService can decide whether
-        // to trigger next track. The threshold check + pop happens there.
-        await this.playerService.setCurrentProgress(
-          jukebox_id,
-          progress ?? 0,
-          duration_ms,
-          session?.id,
-          payload.timestamp,
-        )
+        await this.playerService.setCurrentProgress(jukebox_id, progress ?? 0)
         break
-
       case 'changed_tracks':
         if (spotify_track && !spotify_track?.spotify_id) {
           throw new WsException('Track must have a spotify id')
         }
 
         if (!session) {
-          if (spotify_track) {
-            const track = await this.tracksService.getTrack(spotify_track.spotify_id, jukebox_id)
+          if (!spotify_track) {
+            // this.playerService.setCurrentSpotifyTrack(jukebox_id, null)
+          } else {
+            const track = await this.tracksService.getTrack(spotify_track?.spotify_id, jukebox_id)
             await this.playerService.setCurrentSpotifyTrack(jukebox_id, track)
           }
         } else {
-          // Check if the track that just started is the one we queued.
-          // If so, update state to reflect the queued track — but do NOT
-          // pop here, since the poller in PlayerService already did.
+          // Check if next track was next in queue, if so pop it
           let nextTrack: QueuedTrackDto | null
           try {
             nextTrack = await this.queueService.getNextTrack(session.id)
           } catch (err) {
-            nextTrack =
-              err instanceof NotFoundException
-                ? null
-                : (() => {
-                    throw err
-                  })()
+            if (err instanceof NotFoundException) {
+              nextTrack = null
+            } else throw err
           }
 
           if (nextTrack && nextTrack.track.spotify_id === spotify_track?.spotify_id) {
-            // The poller already popped this and called playTrack. This changed_tracks
-            // event confirms Spotify switched. Nothing to do — state was already updated.
+            // Changed track was next from queue
+            const track = await this.queueService.popNextTrack(session.id)
+            await this.playerService.setCurrentQueuedTrack(jukebox_id, track)
+            await this.queueService.queueNextTrackToSpotify(jukebox_id, session.id)
           } else if (spotify_track) {
-            // Track change came from outside the queue (manual skip, autoplay, etc.)
+            // Changed track was outside of queue
             const track = await this.tracksService.getTrack(spotify_track.spotify_id!, jukebox_id)
             await this.playerService.setCurrentSpotifyTrack(jukebox_id, track)
           }
         }
-        break
 
+        break
       default:
         throw new WsException('Unknown Socket Player Action')
     }
 
     if (progress != null) {
-      // Only update progress field here if action was not 'progress'
-      // (to avoid double-writing and double-triggering)
-      if (action !== 'progress') {
-        await this.playerService.setCurrentProgress(
-          jukebox_id,
-          progress,
-          undefined,
-          undefined,
-          payload.timestamp,
-        )
-      }
+      //await this.playerService.setCurrentProgress(jukebox_id, progress, payload.timestamp)
     }
 
     const playerState = await this.playerService.getPlayerState(jukebox_id)
+    //this.server.to(jukebox_id.toString()).emit('player-state-update', playerState)
     const result = spotify_track
       ? { ...playerState, spotify_track: { ...spotify_track } }
       : playerState
+    console.log(result)
     this.server.to(jukebox_id.toString()).emit('player-state-update', result)
   }
 

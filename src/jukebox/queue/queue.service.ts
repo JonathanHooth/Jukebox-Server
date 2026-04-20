@@ -152,8 +152,11 @@ export class QueueService {
         interactions: true,
       },
       order: {
-        is_editable: 'ASC',
+        likes: 'DESC',
         order: 'ASC',
+      },
+      lock: {
+        mode: 'pessimistic_read',
       },
     })
 
@@ -182,7 +185,7 @@ export class QueueService {
         interactions: true,
       },
       order: {
-        is_editable: 'ASC',
+        likes: 'DESC',
         order: 'ASC',
       },
     })

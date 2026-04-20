@@ -1,5 +1,5 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager'
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Cache } from 'cache-manager'
 import { UserDto } from 'src/shared'
@@ -12,18 +12,8 @@ import { QueueService } from '../queue/queue.service'
 import { ActionType, PlayerActionDto, PlayerStateDto, SetPlayerDeviceDto } from './dto'
 import { InteractionType, PlayerInteraction } from './entity/player-interaction.entity'
 
-const TRIGGER_THRESHOLD_MS = 1500
-
 @Injectable()
 export class PlayerService {
-  private readonly logger = new Logger(PlayerService.name)
-
-  /**
-   * Guards against triggering next-track twice when progress ticks
-   * straddle the threshold. Keyed by jukeboxId.
-   */
-  private readonly transitioning = new Set<number>()
-
   constructor(
     @InjectRepository(PlayerInteraction) private repo: Repository<PlayerInteraction>,
     @Inject(CACHE_MANAGER) private cache: Cache,
@@ -50,6 +40,7 @@ export class PlayerService {
     }
 
     await this.setPlayerState(jukeboxId, updatedState)
+
     return updatedState
   }
 
@@ -58,9 +49,13 @@ export class PlayerService {
    */
   async getPlayerState(jukeboxId: number): Promise<PlayerStateDto> {
     let cachedState = await this.cache.get<PlayerStateDto>(`jukebox-${jukeboxId}`)
+    console.log('cached')
+    console.log(cachedState)
     if (!cachedState) {
       const accountLink = await this.accountLinkService.getActiveAccount(jukeboxId)
       const spotify_track = await this.spotifyService.getCurrentTrack(accountLink.spotify_account)
+      console.log('Made caching')
+      console.log(spotify_track)
 
       cachedState = {
         jukebox_id: jukeboxId,
@@ -71,6 +66,11 @@ export class PlayerService {
       }
       await this.setPlayerState(jukeboxId, cachedState)
     }
+
+    // if (cachedState.queued_track) {
+    //   const qt = await this.queueService.getQueuedTrackById(cachedState.queued_track.id)
+
+    // }
 
     return cachedState
   }
@@ -87,89 +87,25 @@ export class PlayerService {
   }
 
   /**
-   * Called on every progress tick from the client. Updates cached progress
-   * and — if a juke session is active and the track is nearly over —
-   * pops the top-voted next track and plays it immediately via Spotify.
-   *
-   * The decision is made here at the last viable moment (~1.5s before end),
-   * so votes are valid right up until that point.
+   * Sets the progress in the player state so all
+   * clients get most accurate progress.
    */
   async setCurrentProgress(
     jukeboxId: number,
     progress: number,
-    duration_ms?: number,
-    jukeSessionId?: number,
     timestamp?: Date,
   ): Promise<PlayerStateDto> {
     const cachedState = await this.getPlayerState(jukeboxId)
     cachedState.progress = progress
     cachedState.last_progress_update = timestamp || new Date()
+
     await this.setPlayerState(jukeboxId, cachedState)
-
-    // Trigger next track if we're within threshold, have a session, and aren't already transitioning
-    if (
-      duration_ms != null &&
-      jukeSessionId != null &&
-      !this.transitioning.has(jukeboxId) &&
-      duration_ms - progress <= TRIGGER_THRESHOLD_MS
-    ) {
-      // Set flag synchronously before any awaits to prevent re-entry
-      console.log('NEXT TRACK')
-      this.transitioning.add(jukeboxId)
-      this.triggerNextTrack(jukeboxId, jukeSessionId).catch((err) => {
-        this.logger.error(`Failed to trigger next track for jukebox ${jukeboxId}: ${err.message}`)
-        // Clear on failure so the next tick can retry
-        this.transitioning.delete(jukeboxId)
-      })
-    }
-
     return cachedState
   }
 
   /**
-   * Pops the top-voted track from the queue and tells Spotify to play it.
-   * Called internally when a track is nearly over.
-   */
-  private async triggerNextTrack(jukeboxId: number, jukeSessionId: number): Promise<void> {
-    try {
-      const { current_device_id } = await this.getPlayerState(jukeboxId)
-      if (!current_device_id) {
-        this.logger.warn(`Jukebox ${jukeboxId} has no active device, cannot play next track`)
-        return
-      }
-
-      const accountLink = await this.accountLinkService.getActiveAccount(jukeboxId)
-
-      let nextTrack: QueuedTrackDto
-      try {
-        // popNextTrack resolves winner by likes DESC, insertion order as tiebreak.
-        // This runs at the last viable moment so votes count for as long as possible.
-        nextTrack = await this.queueService.popNextTrack(jukeSessionId)
-      } catch (err) {
-        if (err instanceof NotFoundException) {
-          this.logger.log(`Queue empty for session ${jukeSessionId}, letting Spotify continue`)
-          return
-        }
-        throw err
-      }
-
-      await this.spotifyService.playTrack(
-        accountLink.spotify_account,
-        current_device_id,
-        nextTrack.track.spotify_uri,
-      )
-
-      await this.setCurrentQueuedTrack(jukeboxId, nextTrack)
-      this.logger.log(`Jukebox ${jukeboxId} → now playing "${nextTrack.track.name}"`)
-    } finally {
-      // Hold the flag for 3s so the next few progress ticks (which still reflect the
-      // old track before Spotify switches) don't re-trigger
-      setTimeout(() => this.transitioning.delete(jukeboxId), 3000)
-    }
-  }
-
-  /**
    * A user either like/disliked the currently playing track.
+   * Create interaction and update the player.
    */
   async addInteraction(
     jukeboxId: number,
@@ -213,20 +149,35 @@ export class PlayerService {
 
   /**
    * Sets a track that wasn't in the queue as currently playing.
+   * This is needed when the queue is empty and a new track starts playing
+   * because of Spotify auto play, or because a user manually set the
+   * current track in spotify despite the queue.
    */
   async setCurrentSpotifyTrack(jukeboxId: number, track: TrackDto | null): Promise<PlayerStateDto> {
     return await this.updatePlayerState(jukeboxId, { spotify_track: track ?? undefined })
   }
 
   /**
-   * Sets a queued track as currently playing.
+   * Sets a track from the queue to currently playing. This happens
+   * when a track ends and the next track that starts playing is
+   * the same track that was at the top of the queue.
    */
   async setCurrentQueuedTrack(jukeboxId: number, track: QueuedTrackDto): Promise<PlayerStateDto> {
     return await this.updatePlayerState(jukeboxId, { queued_track: track })
   }
 
+  // /**
+  //  * Set the next track in the queue as currently playing. Connects
+  //  * to QueueService to pop the track and set it as current track
+  //  * using `setCurrentQueuedTrack`.
+  //  */
+  // async playNextQueuedTrack(jukeboxId: number): Promise<PlayerStateDto> {
+  //   throw new NotImplementedException()
+  // }
+
   /**
-   * Change the playback state of the player in spotify, update player state cache.
+   * Change the playback state of the player in spotify,
+   * update player state cache.
    */
   async executeAction(jukeboxId: number, action: PlayerActionDto) {
     const { action_type } = action
@@ -253,14 +204,8 @@ export class PlayerService {
           break
         }
 
-        // Manually skipping: pop immediately (don't wait for threshold)
-        this.transitioning.add(jukeboxId)
-        let nextTrack: QueuedTrackDto | null = null
-        try {
-          nextTrack = await this.queueService.popNextTrack(juke_session_id)
-        } catch {
-          // queue empty
-        }
+        // Get next track, the ws will pop it when it starts playing
+        const nextTrack = await this.queueService.getNextTrack(jukeboxId)
 
         if (!nextTrack) {
           await this.spotifyService.skipNext(spotify_account, current_device_id)
@@ -270,9 +215,9 @@ export class PlayerService {
             current_device_id,
             nextTrack.track.spotify_uri,
           )
-          await this.setCurrentQueuedTrack(+jukeboxId, nextTrack)
         }
-        setTimeout(() => this.transitioning.delete(jukeboxId), 3000)
+        // The player on the client side will record a track change, setting
+        // the current track of the cached player via ws.
         break
       case ActionType.PREVIOUS:
         await this.spotifyService.skipPrevious(spotify_account, current_device_id)

@@ -27,10 +27,10 @@ export class QueueController {
     return await this.queueService.getQueue(jukeSessionId)
   }
 
-  @Roles('admin')
+  @Roles('member')
   @UseGuards(RolesGuard)
   @Post()
-  @ApiOperation({ summary: '[ADMIN] Queue a track to a juke session' })
+  @ApiOperation({ summary: '[MEMBER] Queue a track to a juke session' })
   async queueTrack(
     @Param('juke_session_id', new NumberPipe('juke_session_id')) jukeSessionId: number,
     @Param('jukebox_id', new NumberPipe('jukebox_id')) jukeboxId: number,
