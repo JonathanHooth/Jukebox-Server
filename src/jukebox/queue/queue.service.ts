@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-  NotImplementedException,
-} from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { plainToInstance } from 'class-transformer'
 import { Repository } from 'typeorm'
@@ -40,7 +35,7 @@ export class QueueService {
       order: -1,
       juke_session: { id: jukeSessionId },
     })
-    const track = this.queuedTrackRepo.save(preTrack)
+    const track = await this.queuedTrackRepo.save(preTrack)
     return plainToInstance(QueuedTrackDto, track)
   }
 
@@ -108,6 +103,22 @@ export class QueueService {
    * Re-order the tracks in a queue.
    */
   async setQueueOrder(jukeSessionId: number, ordering: number[]): Promise<QueueDto> {
+    const queue = await this.getQueue(jukeSessionId)
+    const editableTrackIds = queue.tracks
+      .filter((track) => track.is_editable)
+      .map((track) => track.id)
+      .sort((a, b) => a - b)
+    const requestedTrackIds = [...ordering].sort((a, b) => a - b)
+
+    if (
+      editableTrackIds.length !== requestedTrackIds.length ||
+      editableTrackIds.some((id, index) => id !== requestedTrackIds[index])
+    ) {
+      throw new BadRequestException(
+        'Queue ordering must include every editable track for the current juke session exactly once',
+      )
+    }
+
     await this.queuedTrackRepo.query(
       `
       UPDATE queued_track AS qt
@@ -119,15 +130,21 @@ export class QueueService {
       [ordering],
     )
 
-    const queue = await this.getQueue(jukeSessionId)
-    await this.jukeSessionService.updateNextOrder(jukeSessionId, queue.tracks.length + 1)
-    return queue
+    const updatedQueue = await this.getQueue(jukeSessionId)
+    await this.jukeSessionService.updateNextOrder(jukeSessionId, updatedQueue.tracks.length + 1)
+    return updatedQueue
   }
 
   /**
    * Remove a track from the queue.
    */
   async removeTrackFromQueue(jukeSessionId: number, queuedTrackId: number) {
+    const queuedTrack = await this.getQueuedTrackById(queuedTrackId)
+
+    if (queuedTrack.juke_session.id !== jukeSessionId) {
+      throw new BadRequestException('Queued track does not belong to the specified juke session')
+    }
+
     const result = await this.queuedTrackRepo.update(
       { id: queuedTrackId, is_editable: true, played: false },
       { is_editable: false, played: true },

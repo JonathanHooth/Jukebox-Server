@@ -183,11 +183,12 @@ export class PlayerService {
         'Cannot interact with the player if a queued track is not playing.',
       )
 
-    this.repo.create({
+    const interaction = this.repo.create({
       queued_track: { id: queued_track.id },
       user_id: user.id,
       interaction_type,
     })
+    await this.repo.save(interaction)
 
     return await this.updatePlayerState(jukeboxId, (state) => {
       if (interaction_type === InteractionType.LIKE) {
@@ -215,14 +216,20 @@ export class PlayerService {
    * Sets a track that wasn't in the queue as currently playing.
    */
   async setCurrentSpotifyTrack(jukeboxId: number, track: TrackDto | null): Promise<PlayerStateDto> {
-    return await this.updatePlayerState(jukeboxId, { spotify_track: track ?? undefined })
+    return await this.updatePlayerState(jukeboxId, {
+      spotify_track: track ?? undefined,
+      queued_track: undefined,
+    })
   }
 
   /**
    * Sets a queued track as currently playing.
    */
   async setCurrentQueuedTrack(jukeboxId: number, track: QueuedTrackDto): Promise<PlayerStateDto> {
-    return await this.updatePlayerState(jukeboxId, { queued_track: track })
+    return await this.updatePlayerState(jukeboxId, {
+      queued_track: track,
+      spotify_track: track.track,
+    })
   }
 
   /**

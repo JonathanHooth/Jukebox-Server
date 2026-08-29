@@ -16,7 +16,7 @@ export class JukeboxService {
 
   async create(payload: CreateJukeboxDto): Promise<JukeboxDto> {
     const preJukebox = this.jukeboxRepo.create(payload)
-    const jukebox = this.jukeboxRepo.save(preJukebox)
+    const jukebox = await this.jukeboxRepo.save(preJukebox)
     return plainToInstance(JukeboxDto, jukebox)
   }
 

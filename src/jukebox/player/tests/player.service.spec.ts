@@ -168,7 +168,13 @@ describe('PlayerService', () => {
 
   it('should set current progress', async () => {
     const newDate = new Date()
-    const playerState = await service.setCurrentProgress(jukeboxId, 10, newDate)
+    const playerState = await service.setCurrentProgress(
+      jukeboxId,
+      10,
+      undefined,
+      undefined,
+      newDate,
+    )
     expect(playerState.progress).toEqual(10)
     expect(playerState.last_progress_update).toEqual(newDate)
   })
@@ -211,5 +217,6 @@ describe('PlayerService', () => {
     const playerState = await service.setCurrentSpotifyTrack(jukeboxId, newTrack.track)
     expect(playerState.spotify_track).not.toBeNull()
     expect(playerState.spotify_track?.id).toEqual(newTrack.track.id)
+    expect(playerState.queued_track).toBeUndefined()
   })
 })

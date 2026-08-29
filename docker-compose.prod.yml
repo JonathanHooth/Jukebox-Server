@@ -1,0 +1,131 @@
+services:
+  server:
+    restart: always
+    build:
+      context: .
+    container_name: server-jbx
+    networks:
+      - cluster
+    environment:
+      - NODE_ENV=network
+      - PORT=8082
+      - HOST=localhost
+      - LOG_LEVEL=debug
+      - KAFKA_BROKERS=kafka-jbx:9092
+      - BASE_URL=${BASE_URL:-http://localhost:8082}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - CLUBS_URL=http://clubs-network-proxy:8080
+      # - CLUBS_URL=http://127.0.0.1:8080
+      - DB_HOST=jbx-network-db
+      - DB_PORT=5432
+      - DB_USER=devuser
+      - DB_PASS=devpass
+      - DB_NAME=devdatabase
+      - REDIS_HOST=jbx-network-redis
+      - REDIS_PORT=6379
+    ports:
+      - 8082:8082
+    depends_on:
+      - postgres
+      # - pgadmin
+      # - kafka
+      - redis
+    volumes:
+      - ./src:/app/src
+      # - ./packages:/app/packages
+      - ./package.json:/app/package.json
+    command: npm run start:network
+
+  postgres:
+    image: postgres:13-alpine
+    container_name: jbx-network-db
+    volumes:
+      - jukebox-network-pg-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=devdatabase
+      - POSTGRES_USER=devuser
+      - POSTGRES_PASSWORD=devpass
+    ports:
+      - 5432:5432
+    networks:
+      - cluster
+
+  redis:
+    image: redis:alpine
+    container_name: jbx-network-redis
+    networks:
+      - cluster
+
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   container_name: jbx-netork-pgadmin
+  #   restart: always
+  #   ports:
+  #     - "8888:80"
+  #   environment:
+  #     - PGADMIN_DEFAULT_EMAIL=admin@example.com
+  #     - PGADMIN_DEFAULT_PASSWORD=changeme
+  #     - PGADMIN_CONFIG_DATABASE_URI="postgresql://devuser:devpass@jbx-network-db:5432/devdatabase"
+
+  #   volumes:
+  #     - pgadmin-network-data:/var/lib/pgadmin
+  #   networks:
+  #     - cluster
+  
+  pgadmin:
+    # Config adapted from: https://stackoverflow.com/a/77519799/10914922
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    attach: false
+    ports:
+      - '8888:80'
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=changeme
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
+    user: root
+    depends_on:
+      - postgres
+    entrypoint: /bin/sh -c "chmod 600 /pgpass; /entrypoint.sh;"
+    volumes:
+      - pgadmin-jukebox-dev:/var/lib/pgadmin
+    configs:
+      - source: servers.json
+        target: /pgadmin4/servers.json
+      - source: pgpass
+        target: /pgpass
+        
+    networks:
+      - cluster
+
+volumes:
+  jukebox-network-pg-data:
+  pgadmin-jukebox-dev:
+
+networks:
+  cluster:
+    name: clubs_cluster
+    external: true
+    
+configs:
+  pgpass:
+    content: jbx-network-db:5432:*:devuser:devpass
+  servers.json:
+    content: |
+      {
+        "Servers": {
+            "1": {
+                "Group": "Servers",
+                "Name": "Docker",
+                "Host": "jbx-network-db",
+                "Port": 5432,
+                "MaintenanceDB": "devdatabase",
+                "Username": "devuser",
+                "PassFile": "/pgpass",
+                "SSLMode": "prefer",
+                "Favorite": true
+            }
+        }
+      }

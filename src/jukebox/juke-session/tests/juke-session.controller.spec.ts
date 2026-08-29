@@ -132,6 +132,7 @@ describe('JukeSessionController', () => {
       duration_ms: 0,
       is_explicit: false,
       preview_url: null,
+      image_url: null,
     })
   })
 
